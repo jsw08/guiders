@@ -1,5 +1,4 @@
 use core::time;
-use evdev::EventType;
 use std::{env, process::Command, sync::Arc, thread};
 use udev::{Enumerator, MonitorBuilder};
 
@@ -21,23 +20,25 @@ pub enum Errors {
 impl std::fmt::Display for Errors {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Errors::UdevSubsystem => write!(f, ""),
-            Errors::UdevDeviceScan => write!(f, ""),
-            Errors::UdevError => write!(f, ""),
-            Errors::UdevMonitor => write!(f, ""),
-            Errors::EvdevOpen => write!(f, ""),
-            Errors::EvdevFetch(e) => write!(f, ""),
-            Errors::NotController => write!(f, ""),
-            Errors::NoDevicePath => write!(f, ""),
-            Errors::InvalidParams => write!(f, ""),
+            Errors::UdevSubsystem => write!(f, "Failed to filter devices by input subsystem."),
+            Errors::UdevDeviceScan => write!(f, "Failed to scan for devices."),
+            Errors::UdevError => write!(f, "Failed to udev."),
+            Errors::UdevMonitor => write!(f, "Failed to monitor for new devices."),
+            Errors::EvdevOpen => write!(f, "Failed to open device."),
+            Errors::EvdevFetch(e) => write!(f, "Failed to fetch device events: '{e}'."),
+            Errors::NotController => write!(f, "This device is not a controller."),
+            Errors::NoDevicePath => write!(f, "This device does not have a path? Wtf how?"),
+            Errors::InvalidParams => write!(
+                f,
+                "Invalid parameters. Please provide a command to execute once the home button is pressed."
+            ),
         }
     }
 }
 
 fn main() -> Result<(), Errors> {
-    let args: Vec<String> = env::args().collect();
-    let args: Arc<Vec<String>> = Arc::new(args[1..].to_vec());
-    if args.len() == 1 {
+    let args: Arc<Vec<String>> = Arc::new(env::args().collect::<Vec<String>>()[1..].to_vec());
+    if args.len() == 0 {
         return Err(Errors::InvalidParams);
     }
 
@@ -62,6 +63,7 @@ fn main() -> Result<(), Errors> {
             if event.event_type() != udev::EventType::Add {
                 continue;
             }
+            println!("{} CONNECTED", event.sysname().to_str().unwrap());
             let _ = verify_device(event.device(), &args);
         }
         thread::sleep(time::Duration::from_secs(1));
@@ -98,7 +100,7 @@ fn listen_for_key(device_path: &str, args: Arc<Vec<String>>) -> Result<(), Error
 
         for event in fetch_events {
             let key = event.code();
-            if event.event_type() != EventType::KEY
+            if event.event_type().0 != 1 // EventType::KEY
                 || event.value() != 0
                 || (key != 316 && key != 139)
             {
